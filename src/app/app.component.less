@@ -190,8 +190,17 @@ kbd { display: inline-grid; min-width: 21px; height: 21px; padding: 0 5px; place
 .antithesis-panel { padding-bottom: 12px; }
 .pair-list { padding: 10px; display: grid; gap: 8px; }
 .pair-card { padding: 11px; border: 1px solid #e4dfd4; border-radius: 9px; background: #fbfaf6; }
-.pair-head { display: flex; align-items: center; justify-content: space-between; }
+.pair-card.is-mismatched { border-color: #d9a49f; background: #fdf6f4; }
+.pair-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pair-head strong { margin-right: auto; }
 .pair-card p { margin: 8px 0; font: 15px/1.8 "Songti SC", serif; }
+.pair-verdict { margin: 8px 0; padding: 8px 10px; border-radius: 7px; color: #2f6656; background: #eff7f3; font-size: 11px; }
+.pair-verdict.is-mismatched { color: #883932; background: #fbeeec; }
+.pair-verdict.is-pending { color: #7b581d; background: #fbf5e7; }
+.pair-verdict strong { display: block; font-size: 11px; }
+.pair-verdict ul { margin: 6px 0 0; padding-left: 16px; }
+.pair-verdict li { margin: 2px 0; }
+.pair-verdict li.is-first { font-weight: 700; }
 
 .compare-panel { padding: 16px; }
 .compare-toolbar { display: flex; align-items: center; gap: 9px; }

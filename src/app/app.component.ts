@@ -41,6 +41,13 @@ export class AppComponent {
   readonly store = inject(PoetryStoreService);
   readonly templates = METER_TEMPLATES;
   readonly selectedCell = computed(() => this.store.selectedCell());
+  readonly pairRows = computed(() => {
+    const verdicts = this.store.antithesisReport();
+    return this.store.activeVersion().antithesisPairs.map((pair) => ({
+      pair,
+      verdict: verdicts.find((item) => item.pairId === pair.id),
+    }));
+  });
 
   get totalErrors(): number {
     return this.store.issues().filter((issue) => issue.level === 'error').length;

@@ -26,6 +26,28 @@ export interface AntithesisPair {
   note: string;
 }
 
+export interface AntithesisMismatch {
+  position: number;
+  leftChar: string;
+  rightChar: string;
+  tone: '平' | '仄';
+}
+
+export interface AntithesisVerdict {
+  pairId: string;
+  leftLine: number;
+  rightLine: number;
+  status: 'matched' | 'mismatched' | 'pending';
+  lengthMismatch: boolean;
+  leftLength: number;
+  rightLength: number;
+  compared: number;
+  pendingCount: number;
+  mismatches: AntithesisMismatch[];
+  firstMismatch?: AntithesisMismatch;
+  summary: string;
+}
+
 export interface PoemWorkspace {
   title: string;
   author: string;

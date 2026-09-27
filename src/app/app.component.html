@@ -217,15 +217,34 @@
             <nz-empty nzNotFoundContent="尚未建立对仗关系"></nz-empty>
           }
           <div class="pair-list">
-            @for (pair of store.activeVersion().antithesisPairs; track pair.id) {
-              <article class="pair-card">
+            @for (row of pairRows(); track row.pair.id) {
+              <article class="pair-card" [class.is-mismatched]="row.verdict?.status === 'mismatched'">
                 <div class="pair-head">
-                  <strong>第 {{ pair.leftLine + 1 }} 句 ↔ 第 {{ pair.rightLine + 1 }} 句</strong>
-                  <button nz-button nzType="text" nzDanger (click)="store.removeAntithesis(pair.id)">移除</button>
+                  <strong>第 {{ row.pair.leftLine + 1 }} 句 ↔ 第 {{ row.pair.rightLine + 1 }} 句</strong>
+                  @if (row.verdict; as verdict) {
+                    <nz-tag [nzColor]="verdict.status === 'mismatched' ? 'error' : verdict.status === 'pending' ? 'warning' : 'success'">
+                      {{ verdict.status === 'mismatched' ? '失对' : verdict.status === 'pending' ? '待定' : '对仗工整' }}
+                    </nz-tag>
+                  }
+                  <button nz-button nzType="text" nzDanger (click)="store.removeAntithesis(row.pair.id)">移除</button>
                 </div>
-                <p>{{ store.lines()[pair.leftLine] }}</p>
-                <p>{{ store.lines()[pair.rightLine] }}</p>
-                <input nz-input [ngModel]="pair.note" (ngModelChange)="store.updateAntithesis(pair.id, $event)" />
+                <p>{{ store.lines()[row.pair.leftLine] }}</p>
+                <p>{{ store.lines()[row.pair.rightLine] }}</p>
+                @if (row.verdict; as verdict) {
+                  <div class="pair-verdict" [class.is-mismatched]="verdict.status === 'mismatched'" [class.is-pending]="verdict.status === 'pending'">
+                    <strong>{{ verdict.summary }}</strong>
+                    @if (verdict.mismatches.length > 1) {
+                      <ul>
+                        @for (mismatch of verdict.mismatches; track mismatch.position) {
+                          <li [class.is-first]="mismatch.position === verdict.firstMismatch?.position">
+                            第 {{ mismatch.position + 1 }} 字「{{ mismatch.leftChar }}／{{ mismatch.rightChar }}」同为{{ mismatch.tone }}声
+                          </li>
+                        }
+                      </ul>
+                    }
+                  </div>
+                }
+                <input nz-input [ngModel]="row.pair.note" (ngModelChange)="store.updateAntithesis(row.pair.id, $event)" />
               </article>
             }
           </div>

@@ -1,6 +1,8 @@
 import { computed, Injectable, signal } from '@angular/core';
 import type {
+  AntithesisMismatch,
   AntithesisPair,
+  AntithesisVerdict,
   AnalysisCell,
   AnalysisLine,
   CharacterMark,
@@ -193,6 +195,90 @@ export class PoetryStoreService {
     });
   });
 
+  readonly antithesisReport = computed<AntithesisVerdict[]>(() => {
+    const version = this.activeVersion();
+    const analysis = this.analysis();
+    const template = this.template();
+    return version.antithesisPairs.map((pair) => {
+      const leftCells = analysis[pair.leftLine]?.cells ?? [];
+      const rightCells = analysis[pair.rightLine]?.cells ?? [];
+      const base = {
+        pairId: pair.id,
+        leftLine: pair.leftLine,
+        rightLine: pair.rightLine,
+        leftLength: leftCells.length,
+        rightLength: rightCells.length,
+      };
+      if (leftCells.length !== rightCells.length) {
+        return {
+          ...base,
+          status: 'mismatched' as const,
+          lengthMismatch: true,
+          compared: 0,
+          pendingCount: 0,
+          mismatches: [] as AntithesisMismatch[],
+          firstMismatch: undefined,
+          summary: `失对：两句字数不同（第 ${pair.leftLine + 1} 句 ${leftCells.length} 字，第 ${pair.rightLine + 1} 句 ${rightCells.length} 字）`,
+        };
+      }
+      const mismatches: AntithesisMismatch[] = [];
+      let compared = 0;
+      let pendingCount = 0;
+      leftCells.forEach((leftCell, position) => {
+        const rightCell = rightCells[position];
+        const leftRhymeFinal = position === leftCells.length - 1 && (template.rhymeLines.includes(pair.leftLine) || Boolean(leftCell.mark.rhyme));
+        const rightRhymeFinal = position === rightCells.length - 1 && (template.rhymeLines.includes(pair.rightLine) || Boolean(rightCell.mark.rhyme));
+        if (leftRhymeFinal || rightRhymeFinal) return;
+        const leftTone = leftCell.actual;
+        const rightTone = rightCell.actual;
+        if (leftTone === '中' || rightTone === '中') return;
+        if (leftTone === '?' || rightTone === '?') {
+          pendingCount += 1;
+          return;
+        }
+        compared += 1;
+        if (leftTone === rightTone) {
+          mismatches.push({ position, leftChar: leftCell.char, rightChar: rightCell.char, tone: leftTone });
+        }
+      });
+      const firstMismatch = mismatches[0];
+      if (firstMismatch) {
+        return {
+          ...base,
+          status: 'mismatched' as const,
+          lengthMismatch: false,
+          compared,
+          pendingCount,
+          mismatches,
+          firstMismatch,
+          summary: `失对 ${mismatches.length} 处，第一处为第 ${firstMismatch.position + 1} 字「${firstMismatch.leftChar}／${firstMismatch.rightChar}」同为${firstMismatch.tone}声`,
+        };
+      }
+      if (pendingCount > 0 || compared === 0) {
+        return {
+          ...base,
+          status: 'pending' as const,
+          lengthMismatch: false,
+          compared,
+          pendingCount,
+          mismatches,
+          firstMismatch: undefined,
+          summary: pendingCount > 0 ? `待定：尚有 ${pendingCount} 字平仄未定，暂不下结论` : '待定：两句均无可对照位置',
+        };
+      }
+      return {
+        ...base,
+        status: 'matched' as const,
+        lengthMismatch: false,
+        compared,
+        pendingCount,
+        mismatches,
+        firstMismatch: undefined,
+        summary: `对仗工整：对照 ${compared} 字，平仄两两相对`,
+      };
+    });
+  });
+
   readonly issues = computed<PoemIssue[]>(() => {
     const analysis = this.analysis();
     const version = this.activeVersion();
@@ -225,6 +311,26 @@ export class PoetryStoreService {
     rhymeGroups.forEach((chars, rhyme) => {
       const duplicate = chars.find((char, index) => chars.indexOf(char) !== index);
       if (duplicate) issues.push({ id: uid('issue'), level: 'warning', title: '重复用韵', detail: `韵部 ${rhyme} 重复使用末字“${duplicate}”。` });
+    });
+    this.antithesisReport().forEach((verdict) => {
+      if (verdict.status === 'mismatched') {
+        issues.push({
+          id: `antithesis-mismatch-${verdict.pairId}`,
+          level: 'error',
+          title: '对仗失对',
+          detail: `第 ${verdict.leftLine + 1}、${verdict.rightLine + 1} 句：${verdict.summary}`,
+          line: verdict.leftLine,
+          position: verdict.firstMismatch?.position,
+        });
+      } else if (verdict.status === 'pending') {
+        issues.push({
+          id: `antithesis-pending-${verdict.pairId}`,
+          level: 'warning',
+          title: '对仗待定',
+          detail: `第 ${verdict.leftLine + 1}、${verdict.rightLine + 1} 句：${verdict.summary}`,
+          line: verdict.leftLine,
+        });
+      }
     });
     if (version.antithesisPairs.length === 0) {
       issues.push({ id: 'antithesis-empty', level: 'info', title: '尚未标记对仗', detail: '可在检视器中把两句建立对仗关系。' });
@@ -394,8 +500,32 @@ export class PoetryStoreService {
       const tags = line.cells.map((cell) => `${cell.char}${cell.actual === '?' ? '□' : `(${cell.actual})`}`).join(' ');
       return `第 ${line.index + 1} 句：${tags}`;
     });
+    const verdicts = this.antithesisReport();
+    const pairLines = active.antithesisPairs.map((pair) => {
+      const verdict = verdicts.find((item) => item.pairId === pair.id);
+      const rows = [`- 第 ${pair.leftLine + 1} 句 ↔ 第 ${pair.rightLine + 1} 句：${verdict?.summary ?? '未判定'}`];
+      verdict?.mismatches.forEach((mismatch) => {
+        rows.push(`  - 第 ${mismatch.position + 1} 字「${mismatch.leftChar}／${mismatch.rightChar}」同为${mismatch.tone}声`);
+      });
+      if (pair.note) rows.push(`  - 关系说明：${pair.note}`);
+      return rows.join('\n');
+    });
     const notes = this.issues().map((issue) => `[${issue.level.toUpperCase()}] ${issue.title}：${issue.detail}`);
-    return [`# ${this.workspace().title} · 格律校对稿`, '', `底本：${active.name}`, `出处：${active.source}`, '', '## 字音标注', ...lines, '', '## 检查记录', ...notes].join('\n');
+    return [
+      `# ${this.workspace().title} · 格律校对稿`,
+      '',
+      `底本：${active.name}`,
+      `出处：${active.source}`,
+      '',
+      '## 字音标注',
+      ...lines,
+      '',
+      '## 对仗核对',
+      ...(pairLines.length ? pairLines : ['（尚未建立对仗关系）']),
+      '',
+      '## 检查记录',
+      ...notes,
+    ].join('\n');
   }
 
   downloadProofreadCopy(): void {
