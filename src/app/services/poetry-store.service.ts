@@ -1,6 +1,9 @@
 import { computed, Injectable, signal } from '@angular/core';
 import type {
+  AntithesisCheck,
+  AntithesisMismatch,
   AntithesisPair,
+  AntithesisPositionCheck,
   AnalysisCell,
   AnalysisLine,
   CharacterMark,
@@ -193,6 +196,19 @@ export class PoetryStoreService {
     });
   });
 
+  readonly antithesisChecks = computed<AntithesisCheck[]>(() => {
+    const version = this.activeVersion();
+    const analysis = this.analysis();
+    const template = this.template();
+    return version.antithesisPairs.map((pair) => this.checkPair(pair, analysis, template.rhymeLines));
+  });
+
+  readonly antithesisRows = computed(() => {
+    const version = this.activeVersion();
+    const checks = new Map(this.antithesisChecks().map((check) => [check.pairId, check]));
+    return version.antithesisPairs.map((pair) => ({ pair, check: checks.get(pair.id) as AntithesisCheck }));
+  });
+
   readonly issues = computed<PoemIssue[]>(() => {
     const analysis = this.analysis();
     const version = this.activeVersion();
@@ -229,6 +245,34 @@ export class PoetryStoreService {
     if (version.antithesisPairs.length === 0) {
       issues.push({ id: 'antithesis-empty', level: 'info', title: '尚未标记对仗', detail: '可在检视器中把两句建立对仗关系。' });
     }
+    this.antithesisChecks().forEach((check) => {
+      if (check.status === 'match') {
+        issues.push({
+          id: `antithesis-ok-${check.pairId}`,
+          level: 'info',
+          title: '对仗平仄相对',
+          detail: `第 ${check.leftLine + 1} 句与第 ${check.rightLine + 1} 句逐字相对，共核对 ${check.comparedCount} 字。`,
+        });
+        return;
+      }
+      if (check.status === 'length-mismatch' || check.status === 'mismatch') {
+        issues.push({
+          id: `antithesis-fail-${check.pairId}`,
+          level: 'error',
+          title: '对仗失对',
+          detail: check.summary,
+          line: check.firstMismatch ? check.leftLine : undefined,
+          position: check.firstMismatch?.position,
+        });
+        return;
+      }
+      issues.push({
+        id: `antithesis-pending-${check.pairId}`,
+        level: 'warning',
+        title: '对仗尚待判定',
+        detail: check.summary,
+      });
+    });
     if (!issues.some((issue) => issue.level === 'error')) {
       issues.unshift({ id: 'meter-ok', level: 'info', title: '格律检查通过', detail: '当前未发现硬性出律，请继续核对可接受变体。' });
     }
@@ -395,7 +439,49 @@ export class PoetryStoreService {
       return `第 ${line.index + 1} 句：${tags}`;
     });
     const notes = this.issues().map((issue) => `[${issue.level.toUpperCase()}] ${issue.title}：${issue.detail}`);
-    return [`# ${this.workspace().title} · 格律校对稿`, '', `底本：${active.name}`, `出处：${active.source}`, '', '## 字音标注', ...lines, '', '## 检查记录', ...notes].join('\n');
+    const antithesis = this.antithesisChecks().map((check) => {
+      const label = `第 ${check.leftLine + 1} 句 ↔ 第 ${check.rightLine + 1} 句`;
+      const verdict = {
+        match: '【对仗合格】',
+        mismatch: '【失对】',
+        'length-mismatch': '【失对·字数不一】',
+        indeterminate: '【待判定】',
+      }[check.status];
+      const rows = [`${verdict} ${label} — ${check.summary}`];
+      if (check.firstMismatch) {
+        const m = check.firstMismatch;
+        if (m.kind === 'missing') {
+          rows.push(`  失对位置：第 ${m.position + 1} 字（${m.detail}）`);
+        } else {
+          rows.push(`  失对位置：第 ${m.position + 1} 字，左“${m.leftChar}”／右“${m.rightChar}”，同为${m.tone}声`);
+        }
+      }
+      check.positions.forEach((position) => {
+        if (position.status !== 'mismatch' && position.status !== 'missing') return;
+        if (position.status === 'missing') {
+          rows.push(`  · 第 ${position.position + 1} 字：${position.note}`);
+        } else {
+          rows.push(`  · 第 ${position.position + 1} 字：“${position.leftChar}”与“${position.rightChar}”同为${position.leftTone}声`);
+        }
+      });
+      return rows.join('\n');
+    });
+    const blocks = [
+      `# ${this.workspace().title} · 格律校对稿`,
+      '',
+      `底本：${active.name}`,
+      `出处：${active.source}`,
+      '',
+      '## 字音标注',
+      ...lines,
+      '',
+      '## 检查记录',
+      ...notes,
+    ];
+    if (antithesis.length) {
+      blocks.push('', '## 对仗核对', ...antithesis);
+    }
+    return blocks.join('\n');
   }
 
   downloadProofreadCopy(): void {
@@ -435,5 +521,131 @@ export class PoetryStoreService {
   private isAcceptableVariant(template: MeterTemplate, line: number, position: number): boolean {
     if (template.lineLength === 5) return position === 0 || position === 2;
     return position === 0 || position === 2 || position === 4;
+  }
+
+  private checkPair(pair: AntithesisPair, analysis: AnalysisLine[], rhymeLines: number[]): AntithesisCheck {
+    const left = analysis[pair.leftLine];
+    const right = analysis[pair.rightLine];
+    const leftCells = left?.cells ?? [];
+    const rightCells = right?.cells ?? [];
+    const leftLength = leftCells.length;
+    const rightLength = rightCells.length;
+    const lengthMismatch = leftLength !== rightLength;
+    const size = Math.max(leftLength, rightLength);
+
+    const isRhymeEnd = (lineIndex: number, position: number, length: number): boolean =>
+      rhymeLines.includes(lineIndex) && position === length - 1;
+
+    const positions: AntithesisPositionCheck[] = [];
+    let comparedCount = 0;
+    let mismatchCount = 0;
+    let unknownCount = 0;
+    let firstMismatch: AntithesisMismatch | undefined;
+
+    for (let position = 0; position < size; position++) {
+      const lc = leftCells[position];
+      const rc = rightCells[position];
+      const leftChar = lc?.char ?? '';
+      const rightChar = rc?.char ?? '';
+      const leftTone: Tone = lc?.actual ?? '?';
+      const rightTone: Tone = rc?.actual ?? '?';
+
+      if (!lc || !rc) {
+        positions.push({
+          position, leftChar, rightChar, leftTone, rightTone,
+          status: 'missing', note: '两句字数不一致，此字缺位',
+        });
+        mismatchCount += 1;
+        if (!firstMismatch) {
+          firstMismatch = {
+            position,
+            leftChar,
+            rightChar,
+            tone: lc ? leftTone : rightTone,
+            kind: 'missing',
+            detail: lc
+              ? `第 ${position + 1} 字右句缺字，左句作“${leftChar}”`
+              : `第 ${position + 1} 字左句缺字，右句作“${rightChar}”`,
+          };
+        }
+        continue;
+      }
+
+      if (isRhymeEnd(pair.leftLine, position, leftLength) || isRhymeEnd(pair.rightLine, position, rightLength)) {
+        positions.push({
+          position, leftChar, rightChar, leftTone, rightTone,
+          status: 'skipped-rhyme', note: '押韵句末字不参与对照',
+        });
+        continue;
+      }
+      if (leftTone === '中' || rightTone === '中') {
+        positions.push({
+          position, leftChar, rightChar, leftTone, rightTone,
+          status: 'skipped-neutral', note: '可平可仄之字不参与对照',
+        });
+        continue;
+      }
+      if (leftTone === '?' || rightTone === '?') {
+        positions.push({
+          position, leftChar, rightChar, leftTone, rightTone,
+          status: 'unknown', note: '平仄尚未确定，暂不判定',
+        });
+        unknownCount += 1;
+        continue;
+      }
+
+      comparedCount += 1;
+      if (leftTone === rightTone) {
+        positions.push({
+          position, leftChar, rightChar, leftTone, rightTone,
+          status: 'mismatch', note: `两句同为${leftTone}声，失对`,
+        });
+        mismatchCount += 1;
+        if (!firstMismatch) {
+          firstMismatch = {
+            position, leftChar, rightChar, tone: leftTone, kind: 'same-tone',
+            detail: `第 ${position + 1} 字“${leftChar}”与“${rightChar}”同为${leftTone}声`,
+          };
+        }
+      } else {
+        positions.push({
+          position, leftChar, rightChar, leftTone, rightTone,
+          status: 'match', note: '一平一仄，平仄相对',
+        });
+      }
+    }
+
+    let status: AntithesisCheck['status'];
+    if (lengthMismatch) status = 'length-mismatch';
+    else if (mismatchCount > 0) status = 'mismatch';
+    else if (unknownCount > 0) status = 'indeterminate';
+    else status = 'match';
+
+    const head = `第 ${pair.leftLine + 1} 句与第 ${pair.rightLine + 1} 句`;
+    let summary: string;
+    if (status === 'length-mismatch') {
+      summary = `${head}字数不一致（${leftLength} 字对 ${rightLength} 字），整联判为失对；第一处：${firstMismatch?.detail}。`;
+    } else if (status === 'mismatch') {
+      summary = `${head}${firstMismatch?.detail}，为首处失对；共 ${mismatchCount} 处同声。`;
+    } else if (status === 'indeterminate') {
+      summary = `${head}已核对 ${comparedCount} 字均相对，另有 ${unknownCount} 字平仄未定，待标注后再下结论。`;
+    } else {
+      summary = `${head}逐字平仄相对，共核对 ${comparedCount} 字，对仗合格。`;
+    }
+
+    return {
+      pairId: pair.id,
+      leftLine: pair.leftLine,
+      rightLine: pair.rightLine,
+      leftLength,
+      rightLength,
+      status,
+      positions,
+      comparedCount,
+      mismatchCount,
+      unknownCount,
+      firstMismatch,
+      summary,
+    };
   }
 }

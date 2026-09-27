@@ -211,21 +211,65 @@
         <section class="surface antithesis-panel">
           <div class="section-title">
             <div><span class="overline">PARALLELISM</span><h2>对仗关系</h2></div>
-            <button nz-button nzType="primary" (click)="store.addAntithesis()">添加对仗</button>
+            <div class="pair-actions">
+              @if (antithesisFailedCount() > 0) {
+                <nz-tag nzColor="error">{{ antithesisFailedCount() }} 联失对</nz-tag>
+              }
+              <button nz-button nzType="primary" (click)="store.addAntithesis()">添加对仗</button>
+            </div>
           </div>
-          @if (store.activeVersion().antithesisPairs.length === 0) {
+          <p class="pair-rule">逐字核对平仄：字数不一致即失对；押韵句末字、可平可仄之字不对照；平仄未定暂不下结论。</p>
+          @if (store.antithesisRows().length === 0) {
             <nz-empty nzNotFoundContent="尚未建立对仗关系"></nz-empty>
           }
           <div class="pair-list">
-            @for (pair of store.activeVersion().antithesisPairs; track pair.id) {
-              <article class="pair-card">
+            @for (row of store.antithesisRows(); track row.pair.id) {
+              <article class="pair-card" [class.is-mismatch]="row.check.status === 'mismatch' || row.check.status === 'length-mismatch'" [class.is-pending]="row.check.status === 'indeterminate'" [class.is-match]="row.check.status === 'match'">
                 <div class="pair-head">
-                  <strong>第 {{ pair.leftLine + 1 }} 句 ↔ 第 {{ pair.rightLine + 1 }} 句</strong>
-                  <button nz-button nzType="text" nzDanger (click)="store.removeAntithesis(pair.id)">移除</button>
+                  <strong>第 {{ row.pair.leftLine + 1 }} 句 ↔ 第 {{ row.pair.rightLine + 1 }} 句</strong>
+                  <span class="pair-head-right">
+                    <nz-tag [nzColor]="pairTagColor(row.check.status)">{{ pairStatusLabel(row.check.status) }}</nz-tag>
+                    <button nz-button nzType="text" nzDanger (click)="store.removeAntithesis(row.pair.id)">移除</button>
+                  </span>
                 </div>
-                <p>{{ store.lines()[pair.leftLine] }}</p>
-                <p>{{ store.lines()[pair.rightLine] }}</p>
-                <input nz-input [ngModel]="pair.note" (ngModelChange)="store.updateAntithesis(pair.id, $event)" />
+                <div class="pair-grid">
+                  <div class="pair-line">
+                    @for (p of row.check.positions; track p.position) {
+                      <button
+                        type="button"
+                        class="pair-char"
+                        [class]="pairCharClass(p, 'left')"
+                        [disabled]="!p.leftChar"
+                        nz-tooltip
+                        [nzTooltipTitle]="p.note"
+                        (click)="p.leftChar && store.selectCell(row.check.leftLine, p.position)"
+                      >{{ p.leftChar || '□' }}<small>{{ p.leftTone }}</small></button>
+                    }
+                  </div>
+                  <div class="pair-line">
+                    @for (p of row.check.positions; track p.position) {
+                      <button
+                        type="button"
+                        class="pair-char"
+                        [class]="pairCharClass(p, 'right')"
+                        [disabled]="!p.rightChar"
+                        nz-tooltip
+                        [nzTooltipTitle]="p.note"
+                        (click)="p.rightChar && store.selectCell(row.check.rightLine, p.position)"
+                      >{{ p.rightChar || '□' }}<small>{{ p.rightTone }}</small></button>
+                    }
+                  </div>
+                </div>
+                @if (row.check.firstMismatch; as first) {
+                  <p class="pair-mismatch">
+                    首处失对：{{ first.detail }}
+                  </p>
+                } @else if (row.check.status === 'indeterminate') {
+                  <p class="pair-pending-copy">已对 {{ row.check.comparedCount }} 字均相对，{{ row.check.unknownCount }} 字平仄未定，标注后再判。</p>
+                } @else {
+                  <p class="pair-match-copy">已逐字核对 {{ row.check.comparedCount }} 字，一平一仄，对仗合格。</p>
+                }
+                <input nz-input [ngModel]="row.pair.note" (ngModelChange)="store.updateAntithesis(row.pair.id, $event)" />
               </article>
             }
           </div>
@@ -304,7 +348,7 @@
         <aside class="surface export-panel">
           <span class="overline">PROOFREAD EXPORT</span>
           <h2>导出校对稿</h2>
-          <p>包含逐字平仄、韵组、判断依据、出律提示与对仗记录。</p>
+          <p>包含逐字平仄、韵组、判断依据、出律提示与对仗核对；失对联附首处失对位置与全部同声字位。</p>
           <button nz-button nzType="primary" nzSize="large" nzBlock (click)="store.downloadProofreadCopy()">导出 Markdown 校对稿</button>
           <nz-divider></nz-divider>
           <label class="field-label">当前底本说明</label>

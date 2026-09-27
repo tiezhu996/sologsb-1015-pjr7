@@ -14,6 +14,7 @@ import { NzTabsModule } from 'ng-zorro-antd/tabs';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 import { NzToolTipModule } from 'ng-zorro-antd/tooltip';
 import { METER_TEMPLATES, PoetryStoreService } from './services/poetry-store.service';
+import type { AntithesisPositionCheck, AntithesisStatus } from './models/poem.models';
 
 @Component({
   selector: 'app-root',
@@ -58,6 +59,33 @@ export class AppComponent {
 
   setTone(tone: '平' | '仄' | '中' | '?'): void {
     this.store.setMark({ tone });
+  }
+
+  antithesisFailedCount(): number {
+    return this.store.antithesisChecks().filter((check) => check.status === 'mismatch' || check.status === 'length-mismatch').length;
+  }
+
+  pairStatusLabel(status: AntithesisStatus): string {
+    return { match: '对仗合格', mismatch: '失对', 'length-mismatch': '失对·字数不一', indeterminate: '平仄未定' }[status];
+  }
+
+  pairTagColor(status: AntithesisStatus): string {
+    return { match: 'success', mismatch: 'error', 'length-mismatch': 'error', indeterminate: 'warning' }[status];
+  }
+
+  pairCharClass(position: AntithesisPositionCheck, side: 'left' | 'right'): string {
+    const present = side === 'left' ? !!position.leftChar : !!position.rightChar;
+    if (!present) return 'pair-char is-gap';
+    switch (position.status) {
+      case 'match': return 'pair-char is-match';
+      case 'mismatch': return 'pair-char is-mismatch';
+      case 'missing': return 'pair-char is-missing';
+      case 'unknown': return 'pair-char is-unknown';
+      case 'skipped-rhyme':
+      case 'skipped-neutral':
+        return 'pair-char is-skip';
+      default: return 'pair-char';
+    }
   }
 
   updateSource(source: string): void {

@@ -26,6 +26,50 @@ export interface AntithesisPair {
   note: string;
 }
 
+export type AntithesisPositionStatus =
+  | 'match'
+  | 'mismatch'
+  | 'skipped-rhyme'
+  | 'skipped-neutral'
+  | 'unknown'
+  | 'missing';
+
+export interface AntithesisPositionCheck {
+  position: number;
+  leftChar: string;
+  rightChar: string;
+  leftTone: Tone;
+  rightTone: Tone;
+  status: AntithesisPositionStatus;
+  note: string;
+}
+
+export type AntithesisStatus = 'match' | 'mismatch' | 'length-mismatch' | 'indeterminate';
+
+export interface AntithesisMismatch {
+  position: number;
+  leftChar: string;
+  rightChar: string;
+  tone: Tone;
+  kind: 'same-tone' | 'missing';
+  detail: string;
+}
+
+export interface AntithesisCheck {
+  pairId: string;
+  leftLine: number;
+  rightLine: number;
+  leftLength: number;
+  rightLength: number;
+  status: AntithesisStatus;
+  positions: AntithesisPositionCheck[];
+  comparedCount: number;
+  mismatchCount: number;
+  unknownCount: number;
+  firstMismatch?: AntithesisMismatch;
+  summary: string;
+}
+
 export interface PoemWorkspace {
   title: string;
   author: string;

@@ -188,10 +188,40 @@ kbd { display: inline-grid; min-width: 21px; height: 21px; padding: 0 5px; place
 .issue-row small { margin-top: 3px; font-size: 10px; opacity: .8; }
 .issue-row em { font-size: 9px; font-style: normal; }
 .antithesis-panel { padding-bottom: 12px; }
+.pair-actions { display: flex; align-items: center; gap: 8px; }
+.pair-rule { margin: 10px 14px 0; padding: 8px 11px; border-radius: 7px; color: #7b756a; background: #f5f2ea; font-size: 10px; line-height: 1.7; }
 .pair-list { padding: 10px; display: grid; gap: 8px; }
 .pair-card { padding: 11px; border: 1px solid #e4dfd4; border-radius: 9px; background: #fbfaf6; }
-.pair-head { display: flex; align-items: center; justify-content: space-between; }
-.pair-card p { margin: 8px 0; font: 15px/1.8 "Songti SC", serif; }
+.pair-card.is-match { border-color: #b7d4c6; background: #f4faf6; }
+.pair-card.is-mismatch { border-color: #ddada8; background: #fdf3f1; }
+.pair-card.is-pending { border-color: #e2cd95; background: #fdf9ee; }
+.pair-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pair-head-right { display: flex; align-items: center; gap: 6px; }
+.pair-grid { margin: 9px 0 6px; display: grid; gap: 4px; }
+.pair-line { display: flex; flex-wrap: wrap; gap: 4px; }
+.pair-char {
+  width: 42px;
+  height: 46px;
+  padding: 3px 0;
+  border: 1px solid #ddd8cc;
+  border-radius: 6px;
+  background: #fff;
+  color: #33352f;
+  cursor: pointer;
+  font: 18px/1.1 "Songti SC", "STSong", serif;
+}
+.pair-char small { display: block; margin-top: 1px; color: #a19b8f; font: 8px/1.1 "Songti SC", serif; }
+.pair-char:hover { filter: brightness(.97); }
+.pair-char.is-match { background: #e8f4ed; border-color: #a9cdbb; }
+.pair-char.is-mismatch { background: #f9e3df; border-color: #d9978f; box-shadow: inset 0 0 0 1px #c86b61; }
+.pair-char.is-missing { background: #f3d9d5; border-color: #c86b61; }
+.pair-char.is-unknown { background: #f3f0e6; border-color: #d9d0b4; }
+.pair-char.is-skip { background: #f4f2ec; border-color: #e1ddd2; color: #99938a; }
+.pair-char.is-gap { background: repeating-linear-gradient(45deg, #f3e8e7, #f3e8e7 4px, #ecd7d4 4px, #ecd7d4 8px); border-color: #dcb4ae; color: #b46b62; cursor: default; }
+.pair-mismatch { margin: 6px 0; color: #9a3a30; font-size: 11px; line-height: 1.6; }
+.pair-pending-copy { margin: 6px 0; color: #8a6a2a; font-size: 11px; line-height: 1.6; }
+.pair-match-copy { margin: 6px 0; color: #35694f; font-size: 11px; line-height: 1.6; }
+.pair-card input { margin-top: 6px; }
 
 .compare-panel { padding: 16px; }
 .compare-toolbar { display: flex; align-items: center; gap: 9px; }
